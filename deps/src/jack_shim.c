@@ -1,10 +1,11 @@
-#include "portaudio.h"
+#include <jack/jack.h>
 #include <pa_ringbuffer.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
 
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
+#define JACK_SHIM_MAX_PORTS (64)
 
 typedef enum {
     JACK_SHIM_ERRMSG_OVERFLOW, // input overflow
@@ -18,10 +19,14 @@ typedef void (*jack_shim_notifycb_t)(void *userdata);
 
 // This struct is shared between the Julia side and C
 typedef struct {
+    jack_port_t *inports[JACK_SHIM_MAX_PORTS];
+    jack_port_t *outports[JACK_SHIM_MAX_PORTS];
     PaUtilRingBuffer *inputbuf; // ringbuffer for input
     PaUtilRingBuffer *outputbuf; // ringbuffer for output
     PaUtilRingBuffer *errorbuf; // ringbuffer to send error notifications
     int sync; // keep input/output ring buffers synchronized (0/1)
+    int inputchans;
+    int outputchans;
     jack_shim_notifycb_t notifycb; // Julia callback to notify conditions
     void *inputhandle; // condition to notify on new input
     void *outputhandle; // condition to notify when ready for output
@@ -47,17 +52,23 @@ const char *jack_shim_getsourcehash(void)
 }
 
 /*
- * This routine will be called by the PortAudio engine when audio is needed.
+ * This routine will be called by the Jack engine when audio is needed.
  * It may called at interrupt level on some machines so don't do anything that
  * could mess up the system like calling malloc() or free().
  */
-int jack_shim_processcb(const void *input, void *output,
-                     unsigned long frameCount,
-                     const PaStreamCallbackTimeInfo* timeInfo,
-                     PaStreamCallbackFlags statusFlags,
-                     void *userData)
+// int jack_shim_processcb(const void *input, void *output,
+//                      unsigned long frameCount,
+//                      const PaStreamCallbackTimeInfo* timeInfo,
+//                      PaStreamCallbackFlags statusFlags,
+//                      void *userData)
+int jack_shim_processcb(unsigned long frameCount, void *userData)
 {
     jack_shim_info_t *info = userData;
+
+    // PaUtilRingBuffer *inputbuf; // ringbuffer for input
+    // PaUtilRingBuffer *outputbuf; // ringbuffer for output
+    // PaUtilRingBuffer *errorbuf; // ringbuffer to send error notifications
+
     if(info->notifycb == NULL) {
         fprintf(stderr, "jack_shim ERROR: notifycb is NULL\n");
     }
@@ -100,5 +111,5 @@ int jack_shim_processcb(const void *input, void *output,
         }
     }
 
-    return paContinue;
+    return 0;
 }
