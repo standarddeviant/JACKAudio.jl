@@ -3,8 +3,11 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
+#include <limits.h>
+#include <assert.h>
 
-#define MIN(x, y) ((x) < (y) ? (x) : (y))
+#define MIN2(x, y) ((x) < (y) ? (x) : (y))
+#define MIN3(x, y, z) (MIN2(MIN2(x,y), z))
 #define JACK_SHIM_MAX_PORTS (64)
 
 typedef enum {
@@ -21,8 +24,8 @@ typedef void (*jack_shim_notifycb_t)(void *userdata);
 typedef struct {
     jack_port_t *inports[JACK_SHIM_MAX_PORTS];
     jack_port_t *outports[JACK_SHIM_MAX_PORTS];
-    PaUtilRingBuffer *inputbuf; // ringbuffer for input
-    PaUtilRingBuffer *outputbuf; // ringbuffer for output
+    PaUtilRingBuffer *inputbufs[JACK_SHIM_MAX_PORTS]; // ringbuffer for input
+    PaUtilRingBuffer *outputbufs[JACK_SHIM_MAX_PORTS]; // ringbuffer for output
     PaUtilRingBuffer *errorbuf; // ringbuffer to send error notifications
     int sync; // keep input/output ring buffers synchronized (0/1)
     int inputchans;
@@ -72,42 +75,66 @@ int jack_shim_processcb(unsigned long frameCount, void *userData)
     if(info->notifycb == NULL) {
         fprintf(stderr, "jack_shim ERROR: notifycb is NULL\n");
     }
-    int nwrite;
-    if(info->inputbuf) {
-        nwrite = PaUtil_GetRingBufferWriteAvailable(info->inputbuf);
-        nwrite = MIN(frameCount, nwrite);
+
+    assert(info->inputchans <= JACK_SHIM_MAX_PORTS);
+    int inch, nwrite, nwrite_sync=INT_MAX;
+    for(inch=0; inch<info->inputchans; inch++) {
+        if(info->inputbufs[inch]) {
+            nwrite = PaUtil_GetRingBufferWriteAvailable(info->inputbufs[inch]);
+            nwrite = MIN3(frameCount, nwrite, nwrite_sync);
+            if(info->sync) {
+                nwrite_sync = nwrite;
+            }
+        }
     }
-    int nread;
-    if(info->outputbuf) {
-        nread = PaUtil_GetRingBufferReadAvailable(info->outputbuf);
-        nread = MIN(frameCount, nread);
+
+    assert(info->outputchans <= JACK_SHIM_MAX_PORTS);
+    int outch, nread, nread_sync=INT_MAX;
+    for(outch=0; outch<info->inputchans; outch++) {
+        if(info->outputbufs[outch]) {
+            nread = PaUtil_GetRingBufferReadAvailable(info->outputbufs[outch]);
+            nread = MIN3(frameCount, nread, nread_sync);
+            if(info->sync) {
+                nread_sync = nread;
+            }
+        }
     }
-    if(info->inputbuf && info->outputbuf && info->sync) {
+
+    // if(info->inputbuf && info->outputbuf && info->sync)
+    // So, info->sync really means sync all input channels with all output channels
+    if(nwrite > 0 && nread > 0 && info-sync) {
         // to keep the buffers synchronized, set readable and writable to
         // their minimum value
-        nread = MIN(nread, nwrite);
+        nread = MIN2(nread, nwrite);
         nwrite = nread;
     }
+
     // read/write from the ringbuffers
-    if(info->inputbuf) {
-        PaUtil_WriteRingBuffer(info->inputbuf, input, nwrite);
-        if(info->notifycb) {
-            info->notifycb(info->inputhandle);
-        }
-        if(nwrite < frameCount) {
-            senderr(info, JACK_SHIM_ERRMSG_OVERFLOW);
+    for(inch=0; inch<info->inputchans; inch++) {
+        if(info->inputbufs[inch]) {
+            PaUtil_WriteRingBuffer(info->inputbufs[inch], input, nwrite);
+            if(info->notifycb) {
+                info->notifycb(info->inputhandle); // should we notify inputchans times?
+            }
+            if(nwrite < frameCount) {
+                senderr(info, JACK_SHIM_ERRMSG_OVERFLOW);
+            }
         }
     }
-    if(info->outputbuf) {
-        PaUtil_ReadRingBuffer(info->outputbuf, output, nread);
-        if(info->notifycb) {
-            info->notifycb(info->outputhandle);
-        }
-        if(nread < frameCount) {
-            senderr(info, JACK_SHIM_ERRMSG_UNDERFLOW);
-            // we didn't fill the whole output buffer, so zero it out
-            memset(output+nread*info->outputbuf->elementSizeBytes, 0,
-                   (frameCount - nread)*info->outputbuf->elementSizeBytes);
+
+    for(outch=0; outch<info->outputchans; outch++) {
+        if(info->outputbufs[outch]) {
+            PaUtil_ReadRingBuffer(info->outputbufs[outch], output, nread);
+            if(info->notifycb) {
+                info->notifycb(info->outputhandle); // should we notify outputchans times?
+            }
+            if(nread < frameCount) {
+                // the below line will send outputchans err messages - is this too spammy?
+                senderr(info, JACK_SHIM_ERRMSG_UNDERFLOW);
+                // we didn't fill the whole output buffer, so zero it out
+                memset(output+nread*info->outputbufs[outch]->elementSizeBytes, 0,
+                    (frameCount - nread)*info->outputbufs[outch]->elementSizeBytes);
+            }
         }
     }
 

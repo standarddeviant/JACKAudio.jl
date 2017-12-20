@@ -1,3 +1,6 @@
+
+global const JACK_SHIM_MAX_PORTS = Cint(64)
+
 function init_jack_shim()
     libdir = joinpath(dirname(@__FILE__), "..", "deps", "usr", "lib")
     libsuffix = ""
@@ -42,16 +45,60 @@ mutable struct jack_shim_info_t
     # is there a safer "mirror" type for 
     #    jack_port_t *inports[JACK_SHIM_MAX_PORTS] , OR
     #    jack_port_t *outports[JACK_SHIM_MAX_PORTS] (from jack_shim.c) ?
-    inports::Vector{Ptr{Void}} # vector of pointers to jack_port_t for input 
-    outports::Vector{Ptr{Void}} # vector of pointers to jack_port_t for output 
-    inputbuf::Ptr{PaUtilRingBuffer} # ringbuffer for input
-    outputbuf::Ptr{PaUtilRingBuffer} # ringbuffer for output
+    inports::Vector{Ptr{Void},1} # vector of pointers to jack_port_t for input 
+    outports::Vector{Ptr{Void},1} # vector of pointers to jack_port_t for output 
+    inputbufs::Vector{Ptr{PaUtilRingBuffer},1} # ringbuffer for input
+    outputbufs::Vector{Ptr{PaUtilRingBuffer},1} # ringbuffer for output
     errorbuf::Ptr{PaUtilRingBuffer} # ringbuffer to send error notifications
     sync::Cint # keep input/output ring buffers synchronized (0/1)
+    inputchans::Cint # input channel count, needed for use in jack_shim.c / jack_get_port_buffer
+    outputchans::Cint # output channel count, needed for use in jack_shim.c / jack_get_port_buffer
     notifycb::Ptr{Void} # Julia callback to notify on updates (called from audio thread)
     inputhandle::Ptr{Void} # condition to notify on new input data
     outputhandle::Ptr{Void} # condition to notify when ready for output
     errorhandle::Ptr{Void} # condition to notify on new errors
+
+    # this inner constructor lets us enforce the length of the 
+    # (in|out)ports and the (in|out)bufs.  There might be a better way to do this...
+    function jack_shim_info_t(inports_, outports_, inputbufs_, outputbufs_, 
+            errorbuf, sync, inputchans, outputchans, notifycb, 
+            inputhandle, outputhandle, errorhandle)
+        inports, outports  = inports_, outports_
+        inputbufs, outputbufs = inputbufs_, outputbufs_
+        
+        if length(inports_) != JACK_SHIM_MAX_PORTS
+            # should this error instead of fixing the length to JACK_SHIM_MAX_PORTS ?
+            inports = Vector{Ptr{Void}}(JACK_SHIM_MAX_PORTS)
+            inports[1:end] = 0;
+            inports[1:length(inports_)] = inports_;
+        end
+
+        if length(outports_) != JACK_SHIM_MAX_PORTS
+            # should this error instead of fixing the length to JACK_SHIM_MAX_PORTS ?
+            outports = Vector{Ptr{Void}}(JACK_SHIM_MAX_PORTS)
+            outports[1:end] = 0;
+            outports[1:length(outports_)] = outports_;
+        end
+
+        if length(inputbufs_) != JACK_SHIM_MAX_PORTS
+            # should this error instead of fixing the length to JACK_SHIM_MAX_PORTS ?
+            inputbufs = Vector{Ptr{PaUtilRingBuffer}}(JACK_SHIM_MAX_PORTS)
+            inputbufs[1:end] = 0;
+            inputbufs[1:length(inputbufs_)] = inputbufs_;
+        end
+
+        if length(outputbufs_) != JACK_SHIM_MAX_PORTS
+            # should this error instead of fixing the length to JACK_SHIM_MAX_PORTS ?
+            outputbufs = Vector{Ptr{PaUtilRingBuffer}}(JACK_SHIM_MAX_PORTS)
+            outputbufs[1:end] = 0;
+            outputbufs[1:length(outputbufs_)] = outputbufs_;
+        end
+
+        # copy paste from function definition
+        jack_shim_info_t(inports, outports, inputbufs, outputbufs, 
+            errorbuf, sync, inputchans, outputchans, notifycb, 
+            inputhandle, outputhandle, errorhandle)
+    end
 end
 
 """
