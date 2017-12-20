@@ -67,6 +67,12 @@ const char *jack_shim_getsourcehash(void)
 int jack_shim_processcb(unsigned long frameCount, void *userData)
 {
     jack_shim_info_t *info = userData;
+    // void *input and void *output were inputs to pa_shim_processcb, 
+    // but need to be retreived from the jack client - 
+    // (actually the ports registered to that jack client)
+    // jack provides more flexibility than portaudio in some ways, and the
+    // extra flexibility yields this added complexity of retreiving buffers
+    void *input, *output; 
 
     // PaUtilRingBuffer *inputbuf; // ringbuffer for input
     // PaUtilRingBuffer *outputbuf; // ringbuffer for output
@@ -102,7 +108,7 @@ int jack_shim_processcb(unsigned long frameCount, void *userData)
 
     // if(info->inputbuf && info->outputbuf && info->sync)
     // So, info->sync really means sync all input channels with all output channels
-    if(nwrite > 0 && nread > 0 && info-sync) {
+    if(nwrite > 0 && nread > 0 && info->sync) {
         // to keep the buffers synchronized, set readable and writable to
         // their minimum value
         nread = MIN2(nread, nwrite);
@@ -112,6 +118,7 @@ int jack_shim_processcb(unsigned long frameCount, void *userData)
     // read/write from the ringbuffers
     for(inch=0; inch<info->inputchans; inch++) {
         if(info->inputbufs[inch]) {
+            input = jack_port_get_buffer(info->inports[inch], frameCount);
             PaUtil_WriteRingBuffer(info->inputbufs[inch], input, nwrite);
             if(info->notifycb) {
                 info->notifycb(info->inputhandle); // should we notify inputchans times?
@@ -124,6 +131,7 @@ int jack_shim_processcb(unsigned long frameCount, void *userData)
 
     for(outch=0; outch<info->outputchans; outch++) {
         if(info->outputbufs[outch]) {
+            output = jack_port_get_buffer(info->outports[outch], frameCount);
             PaUtil_ReadRingBuffer(info->outputbufs[outch], output, nread);
             if(info->notifycb) {
                 info->notifycb(info->outputhandle); // should we notify outputchans times?
