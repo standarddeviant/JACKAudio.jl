@@ -123,7 +123,9 @@ int jack_shim_processcb(unsigned long frameCount, void *userData)
             if(info->notifycb) {
                 info->notifycb(info->inputhandle); // should we notify inputchans times?
             }
-            if(nwrite < frameCount) {
+            if(nwrite < frameCount && info->sync) {
+                /* FIXME should we add channel information to senderr? */
+                /* We could send something like inch ((inch<<16) & JACK_SHIM_ERRMSG_OVERFLOW) */
                 senderr(info, JACK_SHIM_ERRMSG_OVERFLOW);
             }
         }
@@ -133,11 +135,13 @@ int jack_shim_processcb(unsigned long frameCount, void *userData)
         if(info->outputbufs[outch]) {
             output = jack_port_get_buffer(info->outports[outch], frameCount);
             PaUtil_ReadRingBuffer(info->outputbufs[outch], output, nread);
-            if(info->notifycb) {
+            if(info->notifycb && !info->sync) {
                 info->notifycb(info->outputhandle); // should we notify outputchans times?
             }
-            if(nread < frameCount) {
+            if(nread < frameCount && info->sync ) {
                 // the below line will send outputchans err messages - is this too spammy?
+                /* FIXME should we add channel information to senderr? */
+                /* We could send something like inch ((outch<<16) & JACK_SHIM_ERRMSG_UNDERFLOW) */
                 senderr(info, JACK_SHIM_ERRMSG_UNDERFLOW);
                 // we didn't fill the whole output buffer, so zero it out
                 memset(output+nread*info->outputbufs[outch]->elementSizeBytes, 0,
