@@ -34,6 +34,7 @@ typedef struct {
     void *inputhandle; // condition to notify on new input
     void *outputhandle; // condition to notify when ready for output
     void *errorhandle; // condition to notify on new error
+    void *synchandle;
 } jack_shim_info_t;
 
 void senderr(jack_shim_info_t *info, jack_shim_errmsg_t msg) {
@@ -148,6 +149,11 @@ int jack_shim_processcb(unsigned long frameCount, void *userData)
                     (frameCount - nread)*info->outputbufs[outch]->elementSizeBytes);
             }
         }
+    }
+
+
+    if(info->notifycb) {
+        info->notifycb(info->synchandle); // should we notify outputchans times?
     }
 
     return 0;

@@ -57,6 +57,7 @@ mutable struct jack_shim_info_t
     inputhandle::Ptr{Void} # condition to notify on new input data
     outputhandle::Ptr{Void} # condition to notify when ready for output
     errorhandle::Ptr{Void} # condition to notify on new errors
+    synchandle::Ptr{Void}
 
     # this inner constructor lets us enforce the length of the 
     # (in|out)ports and the (in|out)bufs.  There might be a better way to do this...
