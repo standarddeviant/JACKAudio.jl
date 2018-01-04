@@ -25,13 +25,23 @@ const RINGBUF_SAMPLES = 131072
 # detect an overflow.
 const OVERFLOW_ADVANCE = 8192
 
+
 function __init__()
-    global const process_cb = cfunction(process, Cint, (NFrames, Ptr{Ptr{Void}}))
-    global const shutdown_cb = cfunction(shutdown, Void, (Ptr{JACKClient}, ))
-    global const info_handler_cb = cfunction(info_handler, Void, (Cstring, ))
-    global const error_handler_cb = cfunction(error_handler, Void, (Cstring, ))
+    init_pa_shim()
+
+    # initialize PortAudio on module load
+    @suppress_err Pa_Initialize()
+end
 
 
+function __init__()
+    init_jack_shim()
+    # global const process_cb = cfunction(process, Cint, (NFrames, Ptr{Ptr{Void}}))
+    # global const shutdown_cb = cfunction(shutdown, Void, (Ptr{JACKClient}, ))
+    # global const info_handler_cb = cfunction(info_handler, Void, (Cstring, ))
+    # global const error_handler_cb = cfunction(error_handler, Void, (Cstring, ))
+    
+    global const notifycb_c = cfunction(notifycb, Cint, (Ptr{Void}, ))
     ccall((:jack_set_info_function, :libjack), Void, (Ptr{Void},),
         info_handler_cb)
     ccall((:jack_set_error_function, :libjack), Void, (Ptr{Void},),
@@ -147,15 +157,15 @@ type JACKClient
     # this is memory allocated separately with malloc that is used to give the
     # process callback all the pointers it needs for the source/sink ports and
     # ringbuffers
-    portptrs::Ptr{Ptr{Void}}
-    callback::Base.SingleAsyncWork
+    # portptrs::Ptr{Ptr{Void}}
+    # callback::Base.SingleAsyncWork
 
     # this constructor takes a list of name, channelcount pairs
     function JACKClient{T1 <: Tuple, T2 <: Tuple}(
             name::AbstractString="Julia",
             sources::Vector{T1}=[("In", 2)],
             sinks::Vector{T2}=[("Out", 2)];
-            connect=true, active=true)
+            connect=true, active=true, sync=Cint(1))
         status = Ref{Cint}(Failure)
         clientptr = jack_client_open(name, 0, status)
         if isnullptr(clientptr)
@@ -174,8 +184,8 @@ type JACKClient
         # we malloc 2*nsources + 2*nsinks + 3, because for each source and sink
         # we have the port pointer and the ringbuf pointer, the source and sink
         # lists are null-terminated, and we need to include the callback handle
-        # nsources = sum([p[2] for p in sources])
-        # nsinks = sum([p[2] for p in sinks])
+        inputchans = sum([p[2] for p in sources])
+        outputchans = sum([p[2] for p in sinks])
         # nptrs = 2nsources + 2nsinks + 3
         # TODO: we can switch this malloc and unsafe_store business
         # to an array we push! to
@@ -185,9 +195,18 @@ type JACKClient
         #     error("Failure allocating memory for JACK client \"$name\"")
         # end
 
+        # make fake jack_shim_info_t here to mollify JACKClient constructor
+        # FIXME - is there a better way to handle this?
+        shim_info = jack_shim_info_t(Ptr{Ptr{Void}}(0), Ptr{Ptr{Void}}(0),
+                Ptr{Ptr{PaUtilRingBuffer}}(0), Ptr{Ptr{PaUtilRingBuffer}}(0), 
+                Ptr{PaUtilRingBuffer{}}(0), 
+                sync, inputchans, outputchans, notifycb,
+            inputhandle, outputhandle, errorhandle, synchandle)
+
+
         # for now we leave the callback field uninitialized because we need the
         # client reference to build the callback closure
-        client = new(name, clientptr, JACKSource[], JACKSink[], portptrs)
+        client = new(name, clientptr, JACKSource[], JACKSink[], errbuf, shim_info)
 
         # TODO: break out the source/sink addition to separate functions
         # initialize the sources and sinks
@@ -231,7 +250,6 @@ type JACKClient
         # ptridx += 1
 
 
-        # DRC FIXME, make jack_shim_info_t here based off client.sources and client.sinks...
 
         # client.callback = Base.SingleAsyncWork(data -> managebuffers(client))
 
@@ -616,6 +634,12 @@ end
 memset(buf, val, count) = ccall(:memset, Ptr{Void},
     (Ptr{Void}, Cint, Csize_t),
     buf, 0, count)
+
+
+# this is called by the shim process callback to notify that there is new data.
+# it's run in the audio context so don't do anything besides wake up the
+# AsyncCondition handle associated with that ring buffer
+notifycb(handle) = ccall(:uv_async_send, Cint, (Ptr{Void}, ), handle)
 
 
 end # module

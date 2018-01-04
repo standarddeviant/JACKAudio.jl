@@ -46,10 +46,10 @@ mutable struct jack_shim_info_t
     # is there a safer "mirror" type for 
     #    jack_port_t *inports[JACK_SHIM_MAX_PORTS] , OR
     #    jack_port_t *outports[JACK_SHIM_MAX_PORTS] (from jack_shim.c) ?
-    inports::Vector{Ptr{Void}} # vector of pointers to jack_port_t for input 
-    outports::Vector{Ptr{Void}} # vector of pointers to jack_port_t for output 
-    inputbufs::Vector{Ptr{PaUtilRingBuffer}} # ringbuffer for input
-    outputbufs::Vector{Ptr{PaUtilRingBuffer}} # ringbuffer for output
+    inports::Ptr{Ptr{Void}} # vector of pointers to jack_port_t for input 
+    outports::Ptr{Ptr{Void}} # vector of pointers to jack_port_t for output 
+    inputbufs::Ptr{Ptr{PaUtilRingBuffer}} # ringbuffer for input
+    outputbufs::Ptr{Ptr{PaUtilRingBuffer}} # ringbuffer for output
     errorbuf::Ptr{PaUtilRingBuffer} # ringbuffer to send error notifications
     sync::Cint # keep input/output ring buffers synchronized (0/1)
     inputchans::Cint # input channel count, needed for use in jack_shim.c / jack_get_port_buffer

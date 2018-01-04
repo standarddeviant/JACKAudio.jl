@@ -22,10 +22,10 @@ typedef void (*jack_shim_notifycb_t)(void *userdata);
 
 // This struct is shared between the Julia side and C
 typedef struct {
-    jack_port_t *inports[JACK_SHIM_MAX_PORTS];
-    jack_port_t *outports[JACK_SHIM_MAX_PORTS];
-    PaUtilRingBuffer *inputbufs[JACK_SHIM_MAX_PORTS]; // ringbuffer for input
-    PaUtilRingBuffer *outputbufs[JACK_SHIM_MAX_PORTS]; // ringbuffer for output
+    jack_port_t **inports; //[JACK_SHIM_MAX_PORTS];
+    jack_port_t **outports; //[JACK_SHIM_MAX_PORTS];
+    PaUtilRingBuffer **inputbufs; //[JACK_SHIM_MAX_PORTS]; // ringbuffer for input
+    PaUtilRingBuffer **outputbufs; //[JACK_SHIM_MAX_PORTS]; // ringbuffer for output
     PaUtilRingBuffer *errorbuf; // ringbuffer to send error notifications
     int sync; // keep input/output ring buffers synchronized (0/1)
     int inputchans;
