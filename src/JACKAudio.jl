@@ -58,7 +58,7 @@ RingBuffer maintains the last N samples"""
 immutable JACKPort
     name::ASCIIString
     ptr::PortPtr
-    jackbuf::RingBufPtr
+    ringbuf::RingBuffer
 
     function JACKPort(client, name, porttype)
         ptr = jack_port_register(client, name, JACK_DEFAULT_AUDIO_TYPE, porttype, 0)
@@ -66,13 +66,15 @@ immutable JACKPort
             error("Failed to create port for $name")
         end
 
-        bufptr = jack_ringbuffer_create(RINGBUF_SAMPLES * sizeof(JACKSample))
-        if isnullptr(bufptr)
+        # bufptr = jack_ringbuffer_create(RINGBUF_SAMPLES * sizeof(JACKSample))
+        try
+            ringbuf = RingBuffer(1, RINGBUF_SAMPLES)
+        catch
             jack_port_unregister(client, ptr)
             error("Failed to create ringbuffer for $name")
         end
 
-        new(name, ptr, bufptr)
+        new(name, ptr, ringbuf)
     end
 end
 
@@ -114,7 +116,8 @@ for (T, Super, porttype) in
         while length(s.ports) > 0
             port = pop!(s.ports)
             jack_port_unregister(s.client, port.ptr)
-            jack_ringbuffer_free(port.jackbuf)
+            # jack_ringbuffer_free(port.ringbuf)
+            close(port.ringbuf)
         end
     end
 
@@ -167,19 +170,20 @@ type JACKClient
         end
         # println("Opened JACK Client with status: ", status_str(status[]))
 
+        # need to make jack_shim_info_t instead of portptrs...
         # we malloc 2*nsources + 2*nsinks + 3, because for each source and sink
         # we have the port pointer and the ringbuf pointer, the source and sink
         # lists are null-terminated, and we need to include the callback handle
-        nsources = sum([p[2] for p in sources])
-        nsinks = sum([p[2] for p in sinks])
-        nptrs = 2nsources + 2nsinks + 3
+        # nsources = sum([p[2] for p in sources])
+        # nsinks = sum([p[2] for p in sinks])
+        # nptrs = 2nsources + 2nsinks + 3
         # TODO: we can switch this malloc and unsafe_store business
         # to an array we push! to
-        portptrs = Ptr{Ptr{Void}}(malloc(nptrs*sizeof(Ptr{Void})))
-        if isnullptr(portptrs)
-            jack_client_close(clientptr)
-            error("Failure allocating memory for JACK client \"$name\"")
-        end
+        # portptrs = Ptr{Ptr{Void}}(malloc(nptrs*sizeof(Ptr{Void})))
+        # if isnullptr(portptrs)
+        #     jack_client_close(clientptr)
+        #     error("Failure allocating memory for JACK client \"$name\"")
+        # end
 
         # for now we leave the callback field uninitialized because we need the
         # client reference to build the callback closure
@@ -187,52 +191,58 @@ type JACKClient
 
         # TODO: break out the source/sink addition to separate functions
         # initialize the sources and sinks
-        ptridx = 1
+        # ptridx = 1
         try
             for sourceargs in sources
                 source = JACKSource(clientptr, name, sourceargs[1], sourceargs[2])
                 push!(client.sources, source)
                 # copy pointers to our flat pointer list that we'll give to the callback
-                for port in source.ports
-                    unsafe_store!(portptrs, port.ptr, ptridx)
-                    unsafe_store!(portptrs, port.jackbuf, ptridx+1)
-                    ptridx += 2
-                end
+                # for port in source.ports
+                #     unsafe_store!(portptrs, port.ptr, ptridx)
+                #     unsafe_store!(portptrs, port.ringbuf, ptridx+1)
+                #     ptridx += 2
+                # end
             end
         catch
             close(client)
             rethrow()
         end
         # list of sources is null-terminated
-        unsafe_store!(portptrs, C_NULL, ptridx)
-        ptridx += 1
+        # unsafe_store!(portptrs, C_NULL, ptridx)
+        # ptridx += 1
 
         try
             for sinkargs in sinks
                 sink = JACKSink(clientptr, name, sinkargs[1], sinkargs[2])
                 push!(client.sinks, sink)
                 # copy pointers to our flat pointer list that we'll give to the callback
-                for port in sink.ports
-                    unsafe_store!(portptrs, port.ptr, ptridx)
-                    unsafe_store!(portptrs, port.jackbuf, ptridx+1)
-                    ptridx += 2
-                end
+                # for port in sink.ports
+                #     unsafe_store!(portptrs, port.ptr, ptridx)
+                #     unsafe_store!(portptrs, port.ringbuf, ptridx+1)
+                #     ptridx += 2
+                # end
             end
         catch
             close(client)
             rethrow()
         end
         # list of sinks is null-terminated
-        unsafe_store!(portptrs, C_NULL, ptridx)
-        ptridx += 1
+        # unsafe_store!(portptrs, C_NULL, ptridx)
+        # ptridx += 1
 
-        client.callback = Base.SingleAsyncWork(data -> managebuffers(client))
+
+        # DRC FIXME, make jack_shim_info_t here based off client.sources and client.sinks...
+
+        # client.callback = Base.SingleAsyncWork(data -> managebuffers(client))
 
         # and finally we store the callback handle so the JACK process callback
         # can trigger the managebuffers function to run in the julia context
-        unsafe_store!(portptrs, client.callback.handle, ptridx)
+        # unsafe_store!(portptrs, client.callback.handle, ptridx)
 
-        jack_set_process_callback(clientptr, process_cb, portptrs)
+        # shim_processcb_c
+        jack_set_process_callback(clientptr, shim_processcb_c, Ref)
+
+        # DRC FIXME, should there be a shim level callback for this?
         jack_on_shutdown(clientptr, shutdown_cb, pointer_from_objref(client))
 
         # useful when debugging, because you'll see errors. not sure how safe it
@@ -396,7 +406,7 @@ function SampledSignals.unsafe_write(sink::JACKSink, buf::Array, frameoffset, fr
 
     n = min(bytesavailable(sink), totalbytes)
     for ch in 1:length(ports)
-        jack_ringbuffer_write(ports[ch].jackbuf, chanptrs[ch], n)
+        jack_ringbuffer_write(ports[ch].ringbuf, chanptrs[ch], n)
         chanptrs[ch] += n
     end
     byteswritten += n
@@ -406,7 +416,7 @@ function SampledSignals.unsafe_write(sink::JACKSink, buf::Array, frameoffset, fr
         isopen(sink) || return Int(div(byteswritten, sizeof(JACKSample)))
         n = min(bytesavailable(sink), totalbytes - byteswritten)
         for ch in 1:length(ports)
-            jack_ringbuffer_write(ports[ch].jackbuf, chanptrs[ch], n)
+            jack_ringbuffer_write(ports[ch].ringbuf, chanptrs[ch], n)
             chanptrs[ch] += n
         end
         byteswritten += n
@@ -418,7 +428,7 @@ end
 
 function overflowed(source::JACKSource)
     for port in source.ports
-        if jack_ringbuffer_write_space(port.jackbuf) < sizeof(JACKSample)
+        if jack_ringbuffer_write_space(port.ringbuf) < sizeof(JACKSample)
             return true
         end
     end
@@ -430,7 +440,7 @@ end
 data"""
 function ringbuf_read_advance(source::JACKSource, amount)
     for port in source.ports
-        jack_ringbuffer_read_advance(port.jackbuf, amount)
+        jack_ringbuffer_read_advance(port.ringbuf, amount)
     end
 end
 
@@ -447,7 +457,7 @@ function SampledSignals.unsafe_read!(source::JACKSource, buf::Array, frameoffset
     # do the first read immediately
     nbytes = min(bytesavailable(source), totalbytes)
     for ch in 1:length(ports)
-        jack_ringbuffer_read(ports[ch].jackbuf, chanptrs[ch], nbytes)
+        jack_ringbuffer_read(ports[ch].ringbuf, chanptrs[ch], nbytes)
         chanptrs[ch] += nbytes
     end
     byteswritten += nbytes
@@ -459,7 +469,7 @@ function SampledSignals.unsafe_read!(source::JACKSource, buf::Array, frameoffset
         isopen(source) || return Int(div(byteswritten, sizeof(JACKSample)))
         nbytes = min(bytesavailable(source), totalbytes - byteswritten)
         for ch in 1:length(ports)
-            jack_ringbuffer_read(ports[ch].jackbuf, chanptrs[ch], nbytes)
+            jack_ringbuffer_read(ports[ch].ringbuf, chanptrs[ch], nbytes)
             chanptrs[ch] += nbytes
         end
         byteswritten += nbytes
@@ -478,7 +488,7 @@ channels, aligned to a JACKSample boundry"""
 function bytesavailable(sink::JACKSink)
     space = typemax(Csize_t)
     for port in sink.ports
-        space = min(space, jack_ringbuffer_write_space(port.jackbuf))
+        space = min(space, jack_ringbuffer_write_space(port.ringbuf))
     end
 
     sampalign(space)
@@ -492,7 +502,7 @@ channels, aligned to a JACKSample boundry"""
 function bytesavailable(source::JACKSource)
     space = typemax(Csize_t)
     for port in source.ports
-        space = min(space, jack_ringbuffer_read_space(port.jackbuf))
+        space = min(space, jack_ringbuffer_read_space(port.ringbuf))
     end
 
     sampalign(space)

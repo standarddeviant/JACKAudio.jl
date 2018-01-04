@@ -1,4 +1,6 @@
 
+using Compat
+using RingBuffers
 
 include("libjack.jl")
 include("jack_shim.jl")
@@ -19,7 +21,7 @@ mutable struct JACKSyncedProcess
 end
 
 function JACKSyncedProcess(inports::Vector{String}, outports::Vector{String}, 
-                           process::Function, nframes::Integer)
+                           process::Function, nframes::Integer, name::String="jsptest")
     # create AsyncCondition
     async_cond = Base.AsyncCondition()
 
@@ -91,11 +93,12 @@ function JACKSyncedProcess(inports::Vector{String}, outports::Vector{String},
 end
 
 # fixme generic constructors with int channels
-function JACKSyncedProcess(inchans::Integer, outchans::Integer, process::Function)
+function JACKSyncedProcess(inchans::Integer, outchans::Integer, 
+        process::Function, nframes::Integer)
     JACKSyncedProcess(
         [@sprintf("in_%02d",itm) for itm in 1:inchans], # Vector{String}
         [@sprintf("out_%02d",itm) for itm in 1:outchans], # Vector{String}
-        process)
+        process, nframes)
 end
 
 
