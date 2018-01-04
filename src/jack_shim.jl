@@ -62,45 +62,45 @@ mutable struct jack_shim_info_t
 
     # this inner constructor lets us enforce the length of the 
     # (in|out)ports and the (in|out)bufs.  There might be a better way to do this...
-    function jack_shim_info_t(inports_, outports_, inputbufs_, outputbufs_, 
-            errorbuf, sync, inputchans, outputchans, notifycb, 
-            inputhandle, outputhandle, errorhandle, synchandle)
-        inports, outports  = inports_, outports_
-        inputbufs, outputbufs = inputbufs_, outputbufs_
+    # function jack_shim_info_t(inports_, outports_, inputbufs_, outputbufs_, 
+    #         errorbuf, sync, inputchans, outputchans, notifycb, 
+    #         inputhandle, outputhandle, errorhandle, synchandle)
+    #     inports, outports  = inports_, outports_
+    #     inputbufs, outputbufs = inputbufs_, outputbufs_
         
-        if length(inports_) != JACK_SHIM_MAX_PORTS
-            # should this error instead of fixing the length to JACK_SHIM_MAX_PORTS ?
-            inports = Vector{Ptr{Void}}(JACK_SHIM_MAX_PORTS)
-            inports[1:end] = 0;
-            inports[1:length(inports_)] = inports_;
-        end
+    #     if length(inports_) != JACK_SHIM_MAX_PORTS
+    #         # should this error instead of fixing the length to JACK_SHIM_MAX_PORTS ?
+    #         inports = Vector{Ptr{Void}}(JACK_SHIM_MAX_PORTS)
+    #         inports[1:end] = 0;
+    #         inports[1:length(inports_)] = inports_;
+    #     end
 
-        if length(outports_) != JACK_SHIM_MAX_PORTS
-            # should this error instead of fixing the length to JACK_SHIM_MAX_PORTS ?
-            outports = Vector{Ptr{Void}}(JACK_SHIM_MAX_PORTS)
-            outports[1:end] = 0;
-            outports[1:length(outports_)] = outports_;
-        end
+    #     if length(outports_) != JACK_SHIM_MAX_PORTS
+    #         # should this error instead of fixing the length to JACK_SHIM_MAX_PORTS ?
+    #         outports = Vector{Ptr{Void}}(JACK_SHIM_MAX_PORTS)
+    #         outports[1:end] = 0;
+    #         outports[1:length(outports_)] = outports_;
+    #     end
 
-        if length(inputbufs_) != JACK_SHIM_MAX_PORTS
-            # should this error instead of fixing the length to JACK_SHIM_MAX_PORTS ?
-            inputbufs = Vector{Ptr{PaUtilRingBuffer}}(JACK_SHIM_MAX_PORTS)
-            inputbufs[1:end] = 0;
-            inputbufs[1:length(inputbufs_)] = inputbufs_;
-        end
+    #     if length(inputbufs_) != JACK_SHIM_MAX_PORTS
+    #         # should this error instead of fixing the length to JACK_SHIM_MAX_PORTS ?
+    #         inputbufs = Vector{Ptr{PaUtilRingBuffer}}(JACK_SHIM_MAX_PORTS)
+    #         inputbufs[1:end] = 0;
+    #         inputbufs[1:length(inputbufs_)] = inputbufs_;
+    #     end
 
-        if length(outputbufs_) != JACK_SHIM_MAX_PORTS
-            # should this error instead of fixing the length to JACK_SHIM_MAX_PORTS ?
-            outputbufs = Vector{Ptr{PaUtilRingBuffer}}(JACK_SHIM_MAX_PORTS)
-            outputbufs[1:end] = 0;
-            outputbufs[1:length(outputbufs_)] = outputbufs_;
-        end
+    #     if length(outputbufs_) != JACK_SHIM_MAX_PORTS
+    #         # should this error instead of fixing the length to JACK_SHIM_MAX_PORTS ?
+    #         outputbufs = Vector{Ptr{PaUtilRingBuffer}}(JACK_SHIM_MAX_PORTS)
+    #         outputbufs[1:end] = 0;
+    #         outputbufs[1:length(outputbufs_)] = outputbufs_;
+    #     end
 
-        # copy paste from function definition
-        jack_shim_info_t(inports, outports, inputbufs, outputbufs, 
-            errorbuf, sync, inputchans, outputchans, notifycb, 
-            inputhandle, outputhandle, errorhandle, synchandle)
-    end
+    #     # copy paste from function definition
+    #     jack_shim_info_t(inports, outports, inputbufs, outputbufs, 
+    #         errorbuf, sync, inputchans, outputchans, notifycb, 
+    #         inputhandle, outputhandle, errorhandle, synchandle)
+    # end
 end
 
 """

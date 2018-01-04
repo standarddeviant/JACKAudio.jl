@@ -40,7 +40,7 @@ function __init__()
     # global const shutdown_cb = cfunction(shutdown, Void, (Ptr{JACKClient}, ))
     # global const info_handler_cb = cfunction(info_handler, Void, (Cstring, ))
     # global const error_handler_cb = cfunction(error_handler, Void, (Cstring, ))
-    
+
     global const notifycb_c = cfunction(notifycb, Cint, (Ptr{Void}, ))
     ccall((:jack_set_info_function, :libjack), Void, (Ptr{Void},),
         info_handler_cb)
@@ -145,6 +145,20 @@ function portname(name, totalchans, chan)
     string(name, suffix)
 end
 
+
+type JACKClientPtrsEtc
+    inports::Vector{PortPtr}
+    outports::Vector{PortPtr}
+    inbufs::Vector{Ptr{PaUtilRingBuffer}}
+    outbufs::Vector{Ptr{PaUtilRingBuffer}}
+    errbuf::RingBuffer{jack_shim_errmsg_t}
+    incond::AsyncCondition # inputhandle; condition to notify on new input
+    outcond::AsyncCondition # outputhandle; # condition to notify when ready for output
+    errcond::AsyncCondition # errorhandle; # condition to notify on new error
+    synccond::AsyncCondition # void *synchandle;
+end
+
+
 """A `JACKClient` represents a connection to the JACK server. It can contain
 multiple `JACKSource`s and `JACKSink`s. It is automatically activated when it is
 constructed, so the sources and sinks are available for reading and writing,
@@ -154,6 +168,9 @@ type JACKClient
     ptr::ClientPtr
     sources::Vector{JACKSource}
     sinks::Vector{JACKSink}
+    ptrsetc::JACKClientPtrsEtc
+    shim_info::jack_shim_info_t
+
     # this is memory allocated separately with malloc that is used to give the
     # process callback all the pointers it needs for the source/sink ports and
     # ringbuffers
@@ -195,18 +212,25 @@ type JACKClient
         #     error("Failure allocating memory for JACK client \"$name\"")
         # end
 
+        ptrsetc = JACKClientPtrsEtc(
+            PortPtr[], # inports::Vector{PortPtr}
+            PortPtr[], # outports::Vector{PortPtr}
+            Ptr{PaUtilRingBuffer}[], # inbufs::Vector{Ptr{PaUtilRingBuffer}}
+            Ptr{PaUtilRingBuffer}[], # inbufs::Vector{Ptr{PaUtilRingBuffer}}
+            RingBuffer{jack_shim_errmsg_t}(RINGBUF_SAMPLES) #errbuf::RingBuffer{jack_shim_errmsg_t}
+        )
+
         # make fake jack_shim_info_t here to mollify JACKClient constructor
         # FIXME - is there a better way to handle this?
         shim_info = jack_shim_info_t(Ptr{Ptr{Void}}(0), Ptr{Ptr{Void}}(0),
                 Ptr{Ptr{PaUtilRingBuffer}}(0), Ptr{Ptr{PaUtilRingBuffer}}(0), 
                 Ptr{PaUtilRingBuffer{}}(0), 
-                sync, inputchans, outputchans, notifycb,
-            inputhandle, outputhandle, errorhandle, synchandle)
-
+                0, 0, 0, notifycb_c,
+                Ptr{Void}(0), Ptr{Void}(0), Ptr{Void}(0), Ptr{Void}(0))
 
         # for now we leave the callback field uninitialized because we need the
         # client reference to build the callback closure
-        client = new(name, clientptr, JACKSource[], JACKSink[], errbuf, shim_info)
+        client = new(name, clientptr, JACKSource[], JACKSink[], ptrsetc, shim_info)
 
         # TODO: break out the source/sink addition to separate functions
         # initialize the sources and sinks
@@ -215,6 +239,10 @@ type JACKClient
             for sourceargs in sources
                 source = JACKSource(clientptr, name, sourceargs[1], sourceargs[2])
                 push!(client.sources, source)
+                append!(client.ptrsetc.inports, 
+                    [p.ptr for p in client.sources[end].ports])
+                append!(client.ptrsetc.inbufs, 
+                    [p.ringbuf.pabuf.buffer for p in client.sources[end].ports])
                 # copy pointers to our flat pointer list that we'll give to the callback
                 # for port in source.ports
                 #     unsafe_store!(portptrs, port.ptr, ptridx)
@@ -234,6 +262,10 @@ type JACKClient
             for sinkargs in sinks
                 sink = JACKSink(clientptr, name, sinkargs[1], sinkargs[2])
                 push!(client.sinks, sink)
+                append!(client.ptrsetc.outports, 
+                    [p.ptr for p in client.sinks[end].ports])
+                append!(client.ptrsetc.outbufs, 
+                    [p.ringbuf.pabuf.buffer for p in client.sinks[end].ports])
                 # copy pointers to our flat pointer list that we'll give to the callback
                 # for port in sink.ports
                 #     unsafe_store!(portptrs, port.ptr, ptridx)
@@ -249,7 +281,16 @@ type JACKClient
         # unsafe_store!(portptrs, C_NULL, ptridx)
         # ptridx += 1
 
-
+        # with ports created, pointers for said ports stroed in flat lists, 
+        # let's make the real shim_info
+        client.shim_info = jack_shim_info_t(
+            pointer(client.ptrsetc.inports), pointer(client.ptrcetc.outports),
+            pointer(client.ptrsetc.inbufs), pointer(client.ptrsetc.outbufs),
+            pointer(client.ptrsetc.errbuf), sync, inputchans, outputchans, notifycb_c, 
+            client.ptrsetc.incond.handle, 
+            client.ptrsetc.outcond.handle, 
+            client.ptrsetc.errcond.handle, 
+            client.ptrsetc.synccond.handle)
 
         # client.callback = Base.SingleAsyncWork(data -> managebuffers(client))
 
@@ -258,7 +299,8 @@ type JACKClient
         # unsafe_store!(portptrs, client.callback.handle, ptridx)
 
         # shim_processcb_c
-        jack_set_process_callback(clientptr, shim_processcb_c, Ref)
+        #                                                      FIXME - should this be Ref instead of pointer?
+        jack_set_process_callback(clientptr, shim_processcb_c, pointer{client.shim_info})
 
         # DRC FIXME, should there be a shim level callback for this?
         jack_on_shutdown(clientptr, shutdown_cb, pointer_from_objref(client))
