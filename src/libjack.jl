@@ -1,22 +1,23 @@
 typealias ClientPtr Ptr{Void}
 typealias PortPtr Ptr{Void}
+#typealias RingBufPtr Ptr{Void}
 typealias CFunPtr Ptr{Void}
 typealias NFrames UInt32
 typealias JACKSample Cfloat
 
 const JACK_DEFAULT_AUDIO_TYPE = "32 bit float mono audio"
 
-# this mirrors the struct defined in ringbuffer.h
-type RingBuf
-    buf::Ptr{Cchar}
-    write_ptr::Csize_t
-    read_ptr::Csize_t
-    size::Csize_t
-    size_mask::Csize_t
-    mlocked::Cint
-end
-# add typealias for consistency with other *Ptr types
-typealias RingBufPtr Ptr{RingBuf}
+# # this mirrors the struct defined in ringbuffer.h
+# type RingBuf
+#     buf::Ptr{Cchar}
+#     write_ptr::Csize_t
+#     read_ptr::Csize_t
+#     size::Csize_t
+#     size_mask::Csize_t
+#     mlocked::Cint
+# end
+# # add typealias for consistency with other *Ptr types
+# typealias RingBufPtr Ptr{RingBuf}
 
 @enum(Option,
     # Null value to use when no option bits are needed.
@@ -158,6 +159,8 @@ jack_port_get_buffer(port, nframes) =
         (PortPtr, NFrames),
         port, nframes)
 
+#= 
+block commenting jack ring buffer code in favor of using pa_ringbuffer.h / RingBuffers.jl
 jack_ringbuffer_create(bytes) =
     ccall((:jack_ringbuffer_create, :libjack), Ptr{RingBuf}, (Csize_t, ), bytes)
 
@@ -183,3 +186,5 @@ jack_ringbuffer_write(ringbuf, src, bytes) =
 jack_ringbuffer_write_space(ringbuf) =
     ccall((:jack_ringbuffer_write_space, :libjack), Csize_t,
         (Ptr{RingBuf}, ), ringbuf)
+=#
+

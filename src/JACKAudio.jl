@@ -176,7 +176,8 @@ type JACKClient
             sources::Vector{T1}=[("In", 2)],
             sinks::Vector{T2}=[("Out", 2)];
             connect=true, active=true, sync=Cint(1))
-        status = Ref{Cint}(Failure)
+        statusval = Cint(0)
+        status = Ref{Cint}(statusval)
         clientptr = jack_client_open(name, 0, status)
         if isnullptr(clientptr)
             error("Failure opening JACK Client: ", status_str(status[]))
@@ -210,14 +211,26 @@ type JACKClient
             PortPtr[], # outports::Vector{PortPtr}
             Ptr{PaUtilRingBuffer}[], # inbufs::Vector{Ptr{PaUtilRingBuffer}}
             Ptr{PaUtilRingBuffer}[], # inbufs::Vector{Ptr{PaUtilRingBuffer}}
-            RingBuffer{jack_shim_errmsg_t}(RINGBUF_SAMPLES) #errbuf::RingBuffer{jack_shim_errmsg_t}
+            RingBuffer{jack_shim_errmsg_t}(1, RINGBUF_SAMPLES), #errbuf::RingBuffer{jack_shim_errmsg_t}
+            AsyncCondition(), # incond::AsyncCondition
+            AsyncCondition(), # outcond::AsyncCondition
+            AsyncCondition(), # errcond::AsyncCondition
+            AsyncCondition()  # synccond::AsyncCondition
         )
+        println("successfully made JACKClientPtrsEtc")
 
         # make fake jack_shim_info_t here to mollify JACKClient constructor
         # FIXME - is there a better way to handle this?
+        
+        println("$(Ptr{Ptr{Void}}(0))")
+        println("$(Ptr{Ptr{PaUtilRingBuffer}}(0))")
+        #0, 0, 0, 
+        #notifycb_c,
+        #Ptr{Void}(0) 
+
         shim_info = jack_shim_info_t(Ptr{Ptr{Void}}(0), Ptr{Ptr{Void}}(0),
                 Ptr{Ptr{PaUtilRingBuffer}}(0), Ptr{Ptr{PaUtilRingBuffer}}(0), 
-                Ptr{PaUtilRingBuffer{}}(0), 
+                Ptr{PaUtilRingBuffer}(0), 
                 0, 0, 0, notifycb_c,
                 Ptr{Void}(0), Ptr{Void}(0), Ptr{Void}(0), Ptr{Void}(0))
 
