@@ -6,6 +6,7 @@ using Compat
 import Compat.ASCIIString
 
 using SampledSignals
+using RingBuffers
 import SampledSignals: nchannels, samplerate, nframes
 using Base.Libc: malloc, free
 
@@ -17,6 +18,7 @@ export JACKClient, sources, sinks, seekavailable
 # Logging.configure(level=DEBUG)
 
 include("libjack.jl")
+include("jack_shim.jl")
 
 # the ringbuffer size will be this times sizeof(float) rounded up to the nearest
 # power of two
@@ -24,15 +26,6 @@ const RINGBUF_SAMPLES = 131072
 # we'll advance the ringbuf read pointer by this many samples whenever we
 # detect an overflow.
 const OVERFLOW_ADVANCE = 8192
-
-
-function __init__()
-    init_pa_shim()
-
-    # initialize PortAudio on module load
-    @suppress_err Pa_Initialize()
-end
-
 
 function __init__()
     init_jack_shim()
@@ -42,10 +35,10 @@ function __init__()
     # global const error_handler_cb = cfunction(error_handler, Void, (Cstring, ))
 
     global const notifycb_c = cfunction(notifycb, Cint, (Ptr{Void}, ))
-    ccall((:jack_set_info_function, :libjack), Void, (Ptr{Void},),
-        info_handler_cb)
-    ccall((:jack_set_error_function, :libjack), Void, (Ptr{Void},),
-        error_handler_cb)
+    # ccall((:jack_set_info_function, :libjack), Void, (Ptr{Void},),
+    #     info_handler_cb)
+    # ccall((:jack_set_error_function, :libjack), Void, (Ptr{Void},),
+    #     error_handler_cb)
 end
 
 function error_handler(msg)
