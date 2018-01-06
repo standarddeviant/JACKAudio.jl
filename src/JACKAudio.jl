@@ -61,7 +61,7 @@ RingBuffer maintains the last N samples"""
 immutable JACKPort
     name::ASCIIString
     ptr::PortPtr
-    ringbuf::RingBuffer
+    ringbuf::RingBuffer{JACKSample}
 
     function JACKPort(client, name, porttype)
         ptr = jack_port_register(client, name, JACK_DEFAULT_AUDIO_TYPE, porttype, 0)
@@ -70,12 +70,11 @@ immutable JACKPort
         end
 
         # bufptr = jack_ringbuffer_create(RINGBUF_SAMPLES * sizeof(JACKSample))
-        try
-            ringbuf = RingBuffer(1, RINGBUF_SAMPLES)
-        catch
+        ringbuf = RingBuffer{JACKSample}(1, RINGBUF_SAMPLES)
+        #= FIXME, if ringbuf doesn't look good, call 
             jack_port_unregister(client, ptr)
             error("Failed to create ringbuffer for $name")
-        end
+        =#
 
         new(name, ptr, ringbuf)
     end
@@ -290,7 +289,7 @@ type JACKClient
         # with ports created, pointers for said ports stroed in flat lists, 
         # let's make the real shim_info
         client.shim_info = jack_shim_info_t(
-            pointer(client.ptrsetc.inports), pointer(client.ptrcetc.outports),
+            pointer(client.ptrsetc.inports), pointer(client.ptrsetc.outports),
             pointer(client.ptrsetc.inbufs), pointer(client.ptrsetc.outbufs),
             pointer(client.ptrsetc.errbuf), sync, inputchans, outputchans, notifycb_c, 
             client.ptrsetc.incond.handle, 
@@ -365,10 +364,13 @@ function Base.close(client::JACKClient)
         closestatus = jack_client_close(client.ptr)
         client.ptr = C_NULL
     end
+    #=
     if !isnullptr(client.portptrs)
         free(client.portptrs)
         client.portptrs = C_NULL
     end
+    =#
+    # FIXME, handle client.ptrsetc
     if closestatus != Cint(Success)
         error("Error closing client $(client.name): $(status_str(status))")
     end
@@ -579,6 +581,9 @@ navailable(source::JACKSource) = div(bytesavailable(source), sizeof(JACKSample))
 
 # This gets called from a separate thread, so it is VERY IMPORTANT that it not
 # allocate any memory or JIT compile when it's being run. Here be segfaults.
+
+#=
+block comment because this process function shouldn't be needed any more w/ the shim layer
 function process(nframes, portptrs)
     nbytes::Csize_t = nframes * sizeof(JACKSample)
 
@@ -650,6 +655,7 @@ function process(nframes, portptrs)
 
     Cint(0)
 end
+=#
 
 """Returns the largest x <= value s.t. x has the given alignment (in bytes)"""
 align{T<:Unsigned}(value::T, alignment::Integer) = value & ~(T(alignment-1))

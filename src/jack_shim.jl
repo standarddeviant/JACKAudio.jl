@@ -35,7 +35,7 @@ function init_jack_shim()
     end
 end
 
-const jack_shim_errmsg_t = Cint
+global const jack_shim_errmsg_t = Cint
 const JACK_SHIM_ERRMSG_OVERFLOW = Cint(0) # input overflow
 const JACK_SHIM_ERRMSG_UNDERFLOW = Cint(1) # output underflow
 const JACK_SHIM_ERRMSG_ERR_OVERFLOW = Cint(2) # error buffer overflowed
