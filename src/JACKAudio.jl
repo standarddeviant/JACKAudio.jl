@@ -175,10 +175,10 @@ type JACKClient
             sources::Vector{T1}=[("In", 2)],
             sinks::Vector{T2}=[("Out", 2)];
             connect=true, active=true, sync=Cint(1))
-        statusval = Cint(0)
-        status = Ref{Cint}(statusval)
-        clientptr = jack_client_open(name, 0, status)
+        status = Cint(0)
+        clientptr = jack_client_open(name, 0, Ref(status))
         if isnullptr(clientptr)
+            @show clientptr
             error("Failure opening JACK Client: ", status_str(status[]))
         end
         if status[] & ServerStarted
@@ -305,10 +305,10 @@ type JACKClient
 
         # shim_processcb_c
         #                                                      FIXME - should this be Ref instead of pointer?
-        jack_set_process_callback(clientptr, shim_processcb_c, pointer{client.shim_info})
+        jack_set_process_callback(clientptr, shim_processcb_c, Ref(client.shim_info))
 
         # DRC FIXME, should there be a shim level callback for this?
-        jack_on_shutdown(clientptr, shutdown_cb, pointer_from_objref(client))
+        # jack_on_shutdown(clientptr, shutdown_cb, pointer_from_objref(client))
 
         # useful when debugging, because you'll see errors. not sure how safe it
         # is though
