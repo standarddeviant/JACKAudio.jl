@@ -154,10 +154,14 @@ jack_port_unregister(client, port) =
     ccall((:jack_port_unregister, :libjack), Cint, (ClientPtr, PortPtr),
         client, port)
 
+@show Libdl.dlpath(:libjack)
+
 jack_port_get_buffer(port, nframes) =
     ccall((:jack_port_get_buffer, :libjack), Ptr{JACKSample},
         (PortPtr, NFrames),
         port, nframes)
+
+@show Libdl.dlpath(:libjack)
 
 #= 
 block commenting jack ring buffer code in favor of using pa_ringbuffer.h / RingBuffers.jl

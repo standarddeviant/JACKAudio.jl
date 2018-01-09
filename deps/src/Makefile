@@ -32,7 +32,7 @@ LDFLAGS +=
 
 ifeq ($(OS), WINNT)
 	LIBS +=
-	LDFLAGS += -shared -L../../../RingBuffers/deps/usr/lib -lpa_ringbuffer$(HOSTSUFFIX)
+	LDFLAGS += -shared -L../../../RingBuffers/deps/usr/lib -lpa_ringbuffer$(HOSTSUFFIX) -ljack
 	INC +=
 	SHACMD = sha256sum
 	SHLIB_EXT = dll
@@ -48,7 +48,7 @@ else
 	CFLAGS += -fPIC
 	LIBS +=
 	INC +=
-	LDFLAGS += -shared
+	LDFLAGS += -shared -ljack
 	SHLIB_EXT = so
 	SHACMD = sha256sum
 endif
